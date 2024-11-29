@@ -11,111 +11,58 @@
 #include <iostream>
 #include <fstream>
 #include <string>
-#include <sstream>
-#include <iomanip>
 #include <filesystem>
 #include <vector>
-
-//// For Windows-specific commands
-//#ifdef _WIN32
-	//#include <windows.h>
-//#else
-	//#include <sys/types.h>
-	//#include <sys/stat.h>
-	//#include <unistd.h>
-//#endif
+#include <sstream>
+#include <iomanip>
 
 bool quiet = false;	// Quiet mode flag
 bool forcedxtone = false;	// DXT1 compression mode flag
 bool forcedxtfive = false;	// DXT5 compression mode flag
 
-//// Function to change terminal title and print colorful output cross-platform
-//void setConsoleTitleAndPrint(const std::string& title, const std::string& message) {
-	//if (quiet) return;
+typedef uint32_t DWORD;
+typedef uint8_t BYTE;
 
-//#ifdef _WIN32
-	//SetConsoleTitle(title.c_str());
-//#else
-	//std::cout << "\033]2;" << title << "\007";
-//#endif
+constexpr DWORD DDS_MAGIC = 0x20534444;	// DDS file magic number
 
-//#ifdef _WIN32
-	//HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
-	//SetConsoleTextAttribute(hConsole, FOREGROUND_BLUE | FOREGROUND_INTENSITY);
-	//std::cout << message << std::endl;
-	//SetConsoleTextAttribute(hConsole, FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
-//#else
-	//std::cout << "\033[1;34m" << message << "\033[0m" << std::endl;
-//#endif
-//}
+struct DDS_PIXELFORMAT {
+	DWORD dwSize;
+	DWORD dwFlags;
+	DWORD dwFourCC;
+	DWORD dwRGBBitCount;
+	DWORD dwRBitMask;
+	DWORD dwGBitMask;
+	DWORD dwBBitMask;
+	DWORD dwABitMask;
+};
 
-// Function to extract bytes from a binary file and return them as a hexadecimal string.
-std::string extractBytes(const std::string& filePath, int offset, int length) {
-	std::ifstream file(filePath, std::ios::binary);
-	if (!file.is_open()) {
-		std::cerr << "* ERROR: Unable to open file: " << filePath << std::endl;
-		return "";
-	}
+struct DDS_HEADER {
+	DWORD dwSize;
+	DWORD dwHeaderFlags;
+	DWORD dwHeight;
+	DWORD dwWidth;
+	DWORD dwPitchOrLinearSize;
+	DWORD dwDepth;
+	DWORD dwMipMapCount;
+	DWORD dwReserved1[11];
+	DDS_PIXELFORMAT ddspf;
+	DWORD dwSurfaceFlags;
+	DWORD dwCubemapFlags;
+	DWORD dwReserved2[3];
+};
 
-	file.seekg(offset, std::ios::beg);
-	std::vector<char> buffer(length);
-	file.read(buffer.data(), length);
-	file.close();
-
-	std::stringstream hexStream;
-	for (int i = 0; i < length; ++i) {
-		hexStream << std::hex << std::setw(2) << std::setfill('0') << (int)(unsigned char)buffer[i];
-	}
-
-	return hexStream.str();
-}
-
-// Function to reverse byte order in the hex string
-std::string reverseBytes(const std::string& hex) {
-	std::string reversed;
-	for (int i = hex.length(); i > 0; i -= 2) {
-		reversed += hex.substr(i - 2, 2);
-	}
-	return reversed;
-}
-
-// Function to convert a hexadecimal string into a string of bytes.
-std::string hexToByteString(const std::string& hex) {
-	std::string bytes;
-	for (size_t i = 0; i < hex.length(); i += 2) {
-		std::string byteString = hex.substr(i, 2);
-		char byte = (char) strtol(byteString.c_str(), nullptr, 16);
-		bytes += byte;
-	}
-	return bytes;
-}
-
-// Function to add padding to hexdata for writing
-void addPadding(std::ofstream& outFile, int count) {
-	for (int i = 0; i < count; ++i) {
-		outFile.put(0x00);	// Add zero bytes
-	}
-}
-
-// Function to validate the input file
-bool checkFileSignature(const std::string& filePath, const std::string& expectedSignature) {
-	std::ifstream file(filePath, std::ios::binary);
-	if (!file.is_open()) {
-		std::cerr << "* ERROR: Unable to open file: " << filePath << std::endl;
-		return false;
-	}
-
-	char buffer[4];
-	file.read(buffer, 4);
-	file.close();
-
-	std::stringstream hexStream;
-	for (int i = 0; i < 4; ++i) {
-		hexStream << std::hex << std::setw(2) << std::setfill('0') << (int)(unsigned char)buffer[i];
-	}
-
-	return hexStream.str() == expectedSignature;
-}
+struct TEX_Header {
+	DWORD dwVersion = 0x00000007;	// TEX magic number
+	BYTE bHash[16] = {};			// Placeholder, generally unused in our conversion
+	DWORD dwUnknown14 = 0;			// Placeholder
+	DWORD dwFormat;					// TEX format derived from DDS format
+	DWORD dwWidth;
+	DWORD dwHeight;
+	DWORD dwUnknown24 = 0;			// Placeholder
+	DWORD dwMipCount;
+	DWORD dwUnknown2C = 0;			// Placeholder
+	DWORD dwUnknown30 = 0;			// Placeholder
+};
 
 // Function to create output directory
 void createDirectories(const std::string& path) {
@@ -125,7 +72,7 @@ void createDirectories(const std::string& path) {
 // Function to print the help message
 void printHelpMessage() {
 	std::cout << "\n";
-	std::cout << "👻 GBTVGR DDS to TEX Converter v0.0.1\n";
+	std::cout << "👻 GBTVGR DDS to TEX Converter v0.1.0\n";
 	std::cout << "\n";
 	std::cout << "Usage: dds2tex <input_file.dds> [options]\n";
 	std::cout << "\n";
@@ -139,6 +86,52 @@ void printHelpMessage() {
 	std::cout << "License GPLv3+: GNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>.\n";
 	std::cout << "This is free software: you are free to change and redistribute it.\n";
 	std::cout << "There is NO WARRANTY, to the extent permitted by law.\n";
+}
+
+// Helper function to map DDS pixel format to TEX format codes
+DWORD mapDDSPixelFormatToTEX(const DDS_PIXELFORMAT& ddsPixelFormat, DWORD cubemapFlag) {
+	if (ddsPixelFormat.dwFourCC == 0x31545844)	// "DXT1"
+		return 0x2B;
+	if (ddsPixelFormat.dwFourCC == 0x33545844)	// "DXT3"
+		return 0x17;
+	if (ddsPixelFormat.dwFourCC == 0x35545844)	// "DXT5"
+		return 0x32;
+	if (ddsPixelFormat.dwRGBBitCount == 32 && ddsPixelFormat.dwRBitMask == 0x00FF0000) {
+		return cubemapFlag ? 0x18 : 0x03;	// A8R8G8B8 (0x18 if cubemap)
+	}
+	if (ddsPixelFormat.dwRGBBitCount == 64 && ddsPixelFormat.dwFourCC == 0x71) {
+		return 0x2E;	// A16B16G16R16F
+	}
+	if (ddsPixelFormat.dwRGBBitCount == 16 && ddsPixelFormat.dwRBitMask == 0x00FF && ddsPixelFormat.dwABitMask == 0xFF00) {
+		return 0x2F;	// A8L8
+	}
+	if (ddsPixelFormat.dwRGBBitCount == 16 && ddsPixelFormat.dwRBitMask == 0xF800) {
+		return 0x04;	// R5G6B5
+	}
+	if (ddsPixelFormat.dwRGBBitCount == 16 && ddsPixelFormat.dwRBitMask == 0x0F00) {
+		return 0x05;	// A4R4G4B4
+	}
+	if (ddsPixelFormat.dwRGBBitCount == 8) {
+		return 0x37;	// L8
+	}
+
+	std::cerr << "* ERROR: Unsupported DDS pixel format.\n";
+	return 0;
+}
+
+// Function to validate the DDS file header
+bool validateDDSFile(const std::string& filePath) {
+	std::ifstream file(filePath, std::ios::binary);
+	if (!file.is_open()) {
+		std::cerr << "* ERROR: Unable to open file: " << filePath << std::endl;
+		return false;
+	}
+
+	DWORD magic;
+	file.read(reinterpret_cast<char*>(&magic), sizeof(magic));
+	file.close();
+
+	return magic == DDS_MAGIC;
 }
 
 // Main function
@@ -170,12 +163,7 @@ int main(int argc, char* argv[]) {
 		}
 	}
 
-	if (forcedxtone == true && forcedxtfive == true) {
-		std::cerr << "* ERROR: options --dxt1 and --dxt5 cannot be used together!" << std::endl;
-		return 1;
-	}
-
-	// Validate input file
+	// Check if input file is provided
 	if (inputFile.empty()) {
 		std::cerr << "* ERROR: No input file specified.\n";
 		printHelpMessage();
@@ -187,101 +175,86 @@ int main(int argc, char* argv[]) {
 		outputFile = std::filesystem::path(inputFile).replace_extension(".tex").string();
 	}
 
-	std::string pathTo = std::filesystem::path(outputFile).parent_path().string();
-	std::string file = std::filesystem::path(outputFile).stem().string();
-
-	std::string input = "dds";
-	std::string output = "tex";
-
-	//setConsoleTitleAndPrint("👻 GBTVGR Converter", "👻 GBTVGR DDS to TEX Converter v0.0.1:");
-
-	// Check if the file has a valid DDS header
-	if (!checkFileSignature(inputFile, "44445320")) {
-		std::cerr << "* ERROR: \"" << inputFile << "\" is not a valid DDS!" << std::endl;
+	// Convert DDS to TEX
+	// Validate DDS file
+	if (!validateDDSFile(inputFile)) {
+		std::cerr << "* ERROR: Not a valid DDS file!\n";
 		return 3;
 	}
 
+	// Open DDS file
+	std::ifstream ddsFile(inputFile, std::ios::binary);
+	if (!ddsFile.is_open()) {
+		std::cerr << "* ERROR: Unable to open DDS file: " << inputFile << std::endl;
+		return 1;
+	}
+
+	// Read DDS header
+	DWORD magic;
+	DDS_HEADER ddsHeader;
+	ddsFile.read(reinterpret_cast<char*>(&magic), sizeof(magic));
+	ddsFile.read(reinterpret_cast<char*>(&ddsHeader), sizeof(DDS_HEADER));
+
+	// Check if the DDS file is a cubemap
+	bool isCubemap = (ddsHeader.dwCubemapFlags & 0x200) != 0;
+
+	// Map DDS format to TEX format
+	DWORD texFormat = mapDDSPixelFormatToTEX(ddsHeader.ddspf, isCubemap);
+	if (texFormat == 0) {
+		std::cerr << "* ERROR: Conversion failed due to unsupported format.\n";
+		return 1;
+	}
+
 	// Check compression type (DXT1 or DXT5)
-	std::string compressionHex = extractBytes(inputFile, 84, 4);
-	std::string compressionHexRev;
-	if (compressionHex == "44585431") {
-		if (forcedxtfive == true) {
-			std::cerr << "* ERROR: MUST USE DXT5 COMPRESSION!" << std::endl;
-			return 7;
-		} else {
-			compressionHexRev = "2b0000";
-		}
-	} else if (compressionHex == "44585435") {
-		if (forcedxtone == true) {
-			std::cerr << "* ERROR: MUST USE DXT1 COMPRESSION!" << std::endl;
-			return 9;
-		} else {
-			compressionHexRev = "320000";
-		}
-	} else {
+	if (forcedxtone && !forcedxtfive && texFormat != 43) {
+		std::cerr << "* ERROR: MUST USE DXT1 COMPRESSION!" << std::endl;
+		return 9;
+	} else if (!forcedxtone && forcedxtfive && texFormat != 50) {
+		std::cerr << "* ERROR: MUST USE DXT5 COMPRESSION!" << std::endl;
+		return 7;
+	} else if (forcedxtone && forcedxtfive && texFormat != 43 && texFormat != 50) {
 		std::cerr << "* ERROR: MUST USE DXT1 OR DXT5 COMPRESSION!" << std::endl;
 		return 5;
 	}
 
-	// Extract dimensions
-	std::string dimensionsHex = extractBytes(inputFile, 12, 8);
-	std::string heightHexRev = reverseBytes(dimensionsHex.substr(0, 8));
-	std::string widthHexRev = reverseBytes(dimensionsHex.substr(8, 8));
+	// Populate TEX header
+	TEX_Header texHeader;
+	texHeader.dwFormat = texFormat;
+	texHeader.dwWidth = ddsHeader.dwWidth;
+	texHeader.dwHeight = ddsHeader.dwHeight;
+	texHeader.dwMipCount = ddsHeader.dwMipMapCount > 0 ? ddsHeader.dwMipMapCount - 1 : 0;
 
-	// Extract mipmaps
-	std::string mipmapsHex = extractBytes(inputFile, 28, 1);
-	int mipmapsDec = std::stoi(mipmapsHex, nullptr, 16) - 1;
-	std::stringstream mipmapsHexStream;
-	mipmapsHexStream << std::setw(8) << std::setfill('0') << std::hex << mipmapsDec;
-	std::string mipmapsHexRev = reverseBytes(mipmapsHexStream.str());
+	// Calculate DDS data size
+	ddsFile.seekg(0, std::ios::end);
+	size_t fileSize = static_cast<std::streamoff>(ddsFile.tellg()) - static_cast<std::streamoff>(sizeof(DDS_HEADER)) - static_cast<std::streamoff>(sizeof(DWORD));	// subtract header sizes
+	ddsFile.seekg(sizeof(DDS_HEADER) + sizeof(DWORD), std::ios::beg);
+
+	// Read DDS data
+	std::vector<char> ddsData(fileSize);
+	ddsFile.read(ddsData.data(), fileSize);
+	ddsFile.close();
+
+	std::string pathTo = std::filesystem::path(outputFile).parent_path().string();
+	std::string file = std::filesystem::path(outputFile).stem().string();
 
 	// Create output directory if not exists
 	createDirectories(pathTo);
 
-	// Prepare output file
-	std::ofstream outFile(outputFile, std::ios::binary);
-	if (!outFile.is_open()) {
-		std::cerr << "* ERROR: Unable to open output file: " << outputFile << std::endl;
+	// Write TEX file
+	std::ofstream texFile(outputFile, std::ios::binary);
+	if (!texFile.is_open()) {
+		std::cerr << "* ERROR: Unable to open TEX file: " << outputFile << std::endl;
 		return 1;
 	}
 
-	// Prepare and write the 52 bytes header
-	outFile.put(0x07);
-	addPadding(outFile, 3);
-	outFile.put(0x4b);
-	outFile.put(0x65);
-	outFile.put(0x79);
-	outFile.put(0x6f);
-	outFile.put(0x66);
-	outFile.put(0x42);
-	outFile.put(0x6c);
-	outFile.put(0x75);
-	outFile.put(0x65);
-	outFile.put(0x53);
-	addPadding(outFile, 10);
-	outFile.write(hexToByteString(compressionHexRev).c_str(), 3);
-	outFile.write(hexToByteString(widthHexRev).c_str(), 4);
-	outFile.write(hexToByteString(heightHexRev).c_str(), 4);
-	addPadding(outFile, 5);
-	if (mipmapsHexRev == "ffffffff") {
-		addPadding(outFile, 4);
-	} else {
-		outFile.write(hexToByteString(mipmapsHexRev).c_str(), 4);
-	}
-	addPadding(outFile, 8);
+	texFile.write(reinterpret_cast<const char*>(&texHeader), sizeof(TEX_Header));
+	texFile.write(ddsData.data(), fileSize);
 
-	// Append remaining content from the input DDS file after 128 bytes
-	std::ifstream inFile(inputFile, std::ios::binary);
-	if (!inFile.is_open()) {
-		std::cerr << "* ERROR: Unable to open input file: " << inputFile << std::endl;
-		return 1;
-	}
+	const std::vector<char> overwriteBytes = {0x4b, 0x65, 0x79, 0x6f, 0x66, 0x42, 0x6c, 0x75, 0x65, 0x53};
+	texFile.seekp(4);
+	texFile.write(overwriteBytes.data(), overwriteBytes.size());
 
-	inFile.seekg(128, std::ios::beg);
-	outFile << inFile.rdbuf();
-
-	outFile.close();
-	inFile.close();
+	texFile.close();
 
 	if (!quiet) std::cout << "Conversion complete: " << outputFile << std::endl;
 
