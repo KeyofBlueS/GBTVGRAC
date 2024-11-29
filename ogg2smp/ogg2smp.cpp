@@ -15,36 +15,7 @@
 #include <iomanip>
 #include <filesystem>
 
-//// For Windows-specific commands
-//#ifdef _WIN32
-	//#include <windows.h>
-//#else
-	//#include <sys/types.h>
-	//#include <sys/stat.h>
-	//#include <unistd.h>
-//#endif
-
 bool quiet = false;	// Quiet mode flag
-
-//// Function to change terminal title and print colorful output cross-platform
-//void setConsoleTitleAndPrint(const std::string& title, const std::string& message) {
-	//if (quiet) return;
-
-//#ifdef _WIN32
-	//SetConsoleTitle(title.c_str());
-//#else
-	//std::cout << "\033]2;" << title << "\007";
-//#endif
-
-//#ifdef _WIN32
-	//HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
-	//SetConsoleTextAttribute(hConsole, FOREGROUND_BLUE | FOREGROUND_INTENSITY);
-	//std::cout << message << std::endl;
-	//SetConsoleTextAttribute(hConsole, FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
-//#else
-	//std::cout << "\033[1;34m" << message << "\033[0m" << std::endl;
-//#endif
-//}
 
 // Function to get the file size
 std::streamsize getFileSize(const std::string& filename) {
