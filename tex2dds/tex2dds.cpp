@@ -19,39 +19,10 @@
 #include <cstdio>
 #include <vector>
 
-//// For Windows-specific commands
-//#ifdef _WIN32
-	//#include <windows.h>
-//#else
-	//#include <sys/types.h>
-	//#include <sys/stat.h>
-	//#include <unistd.h>
-//#endif
-
 typedef uint32_t DWORD;
 typedef uint8_t BYTE;
 
 bool quiet = false;	// Quiet mode flag
-
-//// Function to change terminal title and print colorful output cross-platform
-//void setConsoleTitleAndPrint(const std::string& title, const std::string& message) {
-	//if (quiet) return;
-
-//#ifdef _WIN32
-	//SetConsoleTitle(title.c_str());
-//#else
-	//std::cout << "\033]2;" << title << "\007";
-//#endif
-
-//#ifdef _WIN32
-	//HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
-	//SetConsoleTextAttribute(hConsole, FOREGROUND_BLUE | FOREGROUND_INTENSITY);
-	//std::cout << message << std::endl;
-	//SetConsoleTextAttribute(hConsole, FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
-//#else
-	//std::cout << "\033[1;34m" << message << "\033[0m" << std::endl;
-//#endif
-//}
 
 #define MAKEFOURCC(ch0, ch1, ch2, ch3) \
 	((DWORD)(BYTE)(ch0) | ((DWORD)(BYTE)(ch1) << 8) | \
