@@ -14,6 +14,9 @@
 #include <sstream>
 #include <iomanip>
 #include <filesystem>
+#include <vorbis/codec.h>
+#include <vorbis/vorbisfile.h>
+#include <algorithm>
 
 bool quiet = false;	// Quiet mode flag
 
@@ -57,6 +60,70 @@ void addPadding(std::ofstream& outFile, int count) {
 	}
 }
 
+// Function to get the duration of an Ogg file in milliseconds
+long long getOggFileDurationMilliseconds(const char* filename) {
+	OggVorbis_File vf;
+	FILE* file = fopen(filename, "rb");
+	
+	if (!file) {
+		std::cerr << "Error opening file: " << filename << std::endl;
+		return -1;
+	}
+
+	if (ov_open(file, &vf, NULL, 0) < 0) {
+		std::cerr << "Error reading Ogg file: " << filename << std::endl;
+		fclose(file); 	// Ensure file is closed if opening fails
+		return -1;
+	}
+
+	// Get the total number of samples in the file
+	long totalSamples = ov_pcm_total(&vf, -1);
+
+	// Get the sample rate of the first stream
+	long sampleRate = ov_info(&vf, -1)->rate;
+
+	// Clean up the OggVorbis_File structure
+	ov_clear(&vf);
+
+	// Convert total samples to milliseconds
+	long long duration_millis = (totalSamples * 1000) / sampleRate;
+
+	return duration_millis;
+}
+
+// Function to add padding
+std::string processDuration(long long duration_millis) {
+	// Add 275 ms
+	duration_millis += 275;
+
+	// Multiply by 44
+	long long durationScaled = duration_millis * 44;
+
+	// Convert to hex
+
+	std::string duration_hex = intToHex(static_cast<uint32_t>(durationScaled));
+
+	// Add padding to the hex string
+	int hexSize = duration_hex.size();
+	std::string durationHexPadded;
+
+	if (hexSize == 1) {
+		duration_hex = "000" + duration_hex + "00";
+	} else if (hexSize == 2) {
+		duration_hex = "00" + duration_hex + "00";
+	} else if (hexSize == 3) {
+		duration_hex = "0" + duration_hex + "00";
+	} else if (hexSize == 4) {
+		duration_hex = duration_hex + "00";
+	} else if (hexSize == 5) {
+		duration_hex = "0" + duration_hex;
+	} else if (hexSize == 6) {
+		duration_hex = duration_hex;
+	}
+
+	return duration_hex;
+}
+
 // Function to validate the input file
 bool checkFileSignature(const std::string& filePath, const std::string& expectedSignature) {
 	std::ifstream file(filePath, std::ios::binary);
@@ -85,7 +152,7 @@ void createDirectories(const std::string& path) {
 // Function to print the help message
 void printHelpMessage() {
 	std::cout << "\n";
-	std::cout << "👻 GBTVGR OGG to SMP Converter v0.0.1\n";
+	std::cout << "👻 GBTVGR OGG to SMP Converter v0.1.0\n";
 	std::cout << "\n";
 	std::cout << "Usage: ogg2smp <input_file.ogg> [options]\n";
 	std::cout << "\n";
@@ -152,11 +219,17 @@ int main(int argc, char* argv[]) {
 		return 3;
 	}
 
-	// Get file size and reverse the bytes
+	// Get file size in bytes, convert to hex and reverse the bytes
 	std::streamsize dimension_bytes = getFileSize(inputFile);
 	std::string dimension_hex = intToHex(static_cast<uint32_t>(dimension_bytes));
 	std::string dimension_hex_rev = reverseBytes(dimension_hex);
 
+	// Get duration in milliseconds, convert to hex and reverse the bytes
+	long long duration_millis = getOggFileDurationMilliseconds(inputFile.c_str());
+	std::string duration_hex = processDuration(duration_millis);
+	std::string duration_hex_rev = reverseBytes(duration_hex);
+	duration_hex_rev += "00";
+	
 	// Create output directory if not exists
 	createDirectories(pathTo);
 
@@ -168,26 +241,30 @@ int main(int argc, char* argv[]) {
 	}
 
 	// Prepare and write the 160 bytes header
-	outFile.put(0x06);
-	addPadding(outFile, 3);
-	outFile.put(0x4b);
-	outFile.put(0x65);
-	outFile.put(0x79);
-	outFile.put(0x6f);
-	outFile.put(0x66);
-	outFile.put(0x42);
-	outFile.put(0x6c);
-	outFile.put(0x75);
-	outFile.put(0x65);
-	outFile.put(0x53);
-	addPadding(outFile, 14);
-	outFile.put(0xa0);
-	addPadding(outFile, 3);
-	outFile.write(hexToByteString(dimension_hex_rev).c_str(), 4);
-	addPadding(outFile, 12);
-	outFile.put(0x44);
-	outFile.put(0xac);
-	addPadding(outFile, 110);
+	outFile.put(0x06);			// byte 0
+	addPadding(outFile, 3);		// bytes from 1 to 3
+	outFile.put(0x4b);			// byte 4
+	outFile.put(0x65);			// byte 5
+	outFile.put(0x79);			// byte 6
+	outFile.put(0x6f);			// byte 7
+	outFile.put(0x66);			// byte 8
+	outFile.put(0x42);			// byte 9
+	outFile.put(0x6c);			// byte 10
+	outFile.put(0x75);			// byte 11
+	outFile.put(0x65);			// byte 12
+	outFile.put(0x53);			// byte 13
+	addPadding(outFile, 10);	// bytes from 14 to 23
+	outFile.write(hexToByteString(duration_hex_rev).c_str(), 4);	// bytes from 32 to 35 (subtitle timing?)
+	outFile.put(0xa0);			// byte 28
+	addPadding(outFile, 3);		// bytes from 29 to 31
+	outFile.write(hexToByteString(dimension_hex_rev).c_str(), 4);	// bytes from 32 to 35 (.ogg file size in bytes)
+	outFile.put(0x09);			// byte 36
+	addPadding(outFile, 7);		// bytes from 37 to 43 (byte 40???)
+	outFile.put(0x10);			// byte 44
+	addPadding(outFile, 3);		// bytes from 45 to 47 byte
+	outFile.put(0x44);			// byte 48 (lip-sync animation?)
+	outFile.put(0xac);			// byte 49 (lip-sync animation?)
+	addPadding(outFile, 110);	// bytes from 50 to 160
 
 	// Append the input OGG file
 	std::ifstream inFile(inputFile, std::ios::binary);
