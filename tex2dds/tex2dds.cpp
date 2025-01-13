@@ -140,7 +140,7 @@ void createDirectories(const std::string& path) {
 // Function to print the help message
 void printHelpMessage() {
 	std::cout << "\n";
-	std::cout << "👻 GBTVGR TEX to DDS Converter v0.2.0\n";
+	std::cout << "👻 GBTVGR TEX to DDS Converter v0.3.0\n";
 	std::cout << "\n";
 	std::cout << "Usage: tex2dds <input_file.tex> [options]\n";
 	std::cout << "\n";
