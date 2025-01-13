@@ -241,6 +241,7 @@ int main(int argc, char* argv[]) {
 	}
 
 	switch (texHeader.dwFormat) {
+	case 0x27:
 	case 0x03:
 		ddsHeader.ddspf = DDSPF_A8R8G8B8;
 		break;
@@ -253,9 +254,11 @@ int main(int argc, char* argv[]) {
 	case 0x17:
 		ddsHeader.ddspf = DDSPF_DXT3;
 		break;
+	case 0x2C:
 	case 0x2B:
 		ddsHeader.ddspf = DDSPF_DXT1;
 		break;
+	case 0x26:
 	case 0x18:
 		ddsHeader.ddspf = DDSPF_A8R8G8B8;
 		ddsHeader.dwSurfaceFlags |= DDS_SURFACE_FLAGS_CUBEMAP;
@@ -264,9 +267,11 @@ int main(int argc, char* argv[]) {
 	case 0x2E:
 		ddsHeader.ddspf = DDSPF_A16B16G16R16F;
 		break;
+	case 0x31:
 	case 0x2F:
 		ddsHeader.ddspf = DDSPF_A8L8;
 		break;
+	case 0x34:
 	case 0x32:
 		ddsHeader.ddspf = DDSPF_DXT5;
 		break;
