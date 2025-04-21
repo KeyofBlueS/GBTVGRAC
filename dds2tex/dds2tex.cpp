@@ -1,5 +1,5 @@
 /*  Ghostbusters The Video Game DDS to TEX Converter
-	Copyright 2024 KeyofBlueS
+	Copyright 2025 KeyofBlueS
 
 	The Ghostbusters The Video Game DDS to TEX Converter is free software;
 	you can redistribute it and/or modify it under the terms of the
@@ -17,6 +17,7 @@
 #include <iomanip>
 
 bool quiet = false;	// Quiet mode flag
+bool ps3 = false;	// Dafault is false
 bool forcedxtone = false;	// DXT1 compression mode flag
 bool forcedxtfive = false;	// DXT5 compression mode flag
 
@@ -71,51 +72,86 @@ void createDirectories(const std::string& path) {
 
 // Function to print the help message
 void printHelpMessage() {
-	std::cout << "\n";
-	std::cout << "👻 GBTVGR DDS to TEX Converter v0.1.0\n";
-	std::cout << "\n";
-	std::cout << "Usage: dds2tex <input_file.dds> [options]\n";
-	std::cout << "\n";
-	std::cout << "Options:\n";
-	std::cout << "  -o, --output <output_file.tex>	Specify the output TEX file path and name\n";
-	std::cout << "  -q, --quiet				Disable output messages\n";
-	std::cout << "  -h, --help				Show this help message and exit\n";
-	std::cout << "\n";
-	std::cout << "\n";
-	std::cout << "Copyright © 2024 KeyofBlueS: <https://github.com/KeyofBlueS>.\n";
-	std::cout << "License GPLv3+: GNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>.\n";
-	std::cout << "This is free software: you are free to change and redistribute it.\n";
-	std::cout << "There is NO WARRANTY, to the extent permitted by law.\n";
+	std::cout << std::endl;
+	std::cout << "👻 GBTVGR DDS to TEX Converter v0.2.0" << std::endl;
+	std::cout << std::endl;
+	std::cout << "Usage: dds2tex <input_file.dds> [options]" << std::endl;
+	std::cout << std::endl;
+	std::cout << "Options:" << std::endl;
+	std::cout << "  -o, --output <output_file.tex>	Specify the output TEX file path and name" << std::endl;
+	std::cout << "  --ps3					Output tex files for the PlayStation 3 version of the game" << std::endl;
+	std::cout << "  -q, --quiet				Disable output messages" << std::endl;
+	std::cout << "  -h, --help				Show this help message and exit" << std::endl;
+	std::cout << std::endl;
+	std::cout << std::endl;
+	std::cout << "Copyright © 2025 KeyofBlueS: <https://github.com/KeyofBlueS>." << std::endl;
+	std::cout << "License GPLv3+: GNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>." << std::endl;
+	std::cout << "This is free software: you are free to change and redistribute it." << std::endl;
+	std::cout << "There is NO WARRANTY, to the extent permitted by law." << std::endl;
 }
 
 // Helper function to map DDS pixel format to TEX format codes
 DWORD mapDDSPixelFormatToTEX(const DDS_PIXELFORMAT& ddsPixelFormat, DWORD cubemapFlag) {
-	if (ddsPixelFormat.dwFourCC == 0x31545844)	// "DXT1"
-		return 0x2B;
-	if (ddsPixelFormat.dwFourCC == 0x33545844)	// "DXT3"
+	//std::cout << "dwFourCC: " << ddsPixelFormat.dwFourCC << std::endl;
+	//std::cout << "dwRGBBitCount: " << ddsPixelFormat.dwRGBBitCount << std::endl;
+	//std::cout << "dwRBitMask: " << ddsPixelFormat.dwRBitMask << std::endl;
+	//std::cout << "dwGBitMask: " << ddsPixelFormat.dwGBitMask << std::endl;
+	//std::cout << "dwBBitMask: " << ddsPixelFormat.dwBBitMask << std::endl;
+	//std::cout << "dwABitMask: " << ddsPixelFormat.dwABitMask << std::endl;
+	if (ddsPixelFormat.dwFourCC == 0x31545844) {	// "DXT1"
+		if (!ps3) {
+			return 0x2b;
+		} else {
+			return 0x2c;
+		}
+	}
+	if (ddsPixelFormat.dwFourCC == 0x33545844) {	// "DXT3"
 		return 0x17;
-	if (ddsPixelFormat.dwFourCC == 0x35545844)	// "DXT5"
-		return 0x32;
-	if (ddsPixelFormat.dwRGBBitCount == 32 && ddsPixelFormat.dwRBitMask == 0x00FF0000) {
-		return cubemapFlag ? 0x18 : 0x03;	// A8R8G8B8 (0x18 if cubemap)
 	}
-	if (ddsPixelFormat.dwRGBBitCount == 64 && ddsPixelFormat.dwFourCC == 0x71) {
-		return 0x2E;	// A16B16G16R16F
+	if (ddsPixelFormat.dwFourCC == 0x35545844) {	// "DXT5"
+		if (!ps3) {
+			return 0x32;
+		} else {
+			return 0x34;
+		}
 	}
-	if (ddsPixelFormat.dwRGBBitCount == 16 && ddsPixelFormat.dwRBitMask == 0x00FF && ddsPixelFormat.dwABitMask == 0xFF00) {
-		return 0x2F;	// A8L8
+	if (ddsPixelFormat.dwRGBBitCount == 32 && ddsPixelFormat.dwRBitMask == 0x00FF0000) {	// A8R8G8B8
+		if (!ps3) {
+			return cubemapFlag ? 0x18 : 0x03;	// (0x18 if cubemap)
+		} else {
+			std::cerr << "* ERROR: Unsupported DDS format. Save the DDS as BC3 / DXT5 first." << std::endl;
+			return 0;
+			//return cubemapFlag ? 0x26 : 0x27;	// (0x26 if cubemap)
+		}
 	}
-	if (ddsPixelFormat.dwRGBBitCount == 16 && ddsPixelFormat.dwRBitMask == 0xF800) {
-		return 0x04;	// R5G6B5
+	if (ps3) {
+		if (ddsPixelFormat.dwRGBBitCount == 32 && ddsPixelFormat.dwBBitMask == 0x00FF0000) {	// RGBA8888
+			std::cerr << "* ERROR: Unsupported DDS format. Save the DDS as BC3 / DXT5 first." << std::endl;
+			return 0;
+			//return cubemapFlag ? 0x26 : 0x27;	// A8R8G8B8 (0x26 if cubemap)
+		}
 	}
-	if (ddsPixelFormat.dwRGBBitCount == 16 && ddsPixelFormat.dwRBitMask == 0x0F00) {
-		return 0x05;	// A4R4G4B4
+	if (ddsPixelFormat.dwRGBBitCount == 64 && ddsPixelFormat.dwFourCC == 0x71) {	// A16B16G16R16F
+		return 0x2e;
 	}
-	if (ddsPixelFormat.dwRGBBitCount == 8) {
-		return 0x37;	// L8
+	if (ddsPixelFormat.dwRGBBitCount == 16 && ddsPixelFormat.dwRBitMask == 0x00FF && ddsPixelFormat.dwABitMask == 0xFF00) {	// A8L8
+		if (!ps3) {
+			return 0x2f;
+		} else {
+			return 0x31;
+		}
+	}
+	if (ddsPixelFormat.dwRGBBitCount == 16 && ddsPixelFormat.dwRBitMask == 0xF800) {	// R5G6B5
+		return 0x04;
+	}
+	if (ddsPixelFormat.dwRGBBitCount == 16 && ddsPixelFormat.dwRBitMask == 0x0F00) {	// A4R4G4B4
+		return 0x05;
+	}
+	if (ddsPixelFormat.dwRGBBitCount == 8) {	// L8
+		return 0x37;
 	}
 
-	std::cerr << "* ERROR: Unsupported DDS pixel format.\n";
+	std::cerr << "* ERROR: Unsupported DDS pixel format." << std::endl;
 	return 0;
 }
 
@@ -156,6 +192,8 @@ int main(int argc, char* argv[]) {
 			forcedxtone = true;
 		} else if (arg == "--dxt5") {
 			forcedxtfive = true;
+		} else if (arg == "--ps3") {
+			ps3 = true;
 		} else if (arg == "-q" || arg == "--quiet") {
 			quiet = true;
 		} else {
@@ -165,7 +203,7 @@ int main(int argc, char* argv[]) {
 
 	// Check if input file is provided
 	if (inputFile.empty()) {
-		std::cerr << "* ERROR: No input file specified.\n";
+		std::cerr << "* ERROR: No input file specified." << std::endl;
 		printHelpMessage();
 		return 1;
 	}
@@ -178,7 +216,7 @@ int main(int argc, char* argv[]) {
 	// Convert DDS to TEX
 	// Validate DDS file
 	if (!validateDDSFile(inputFile)) {
-		std::cerr << "* ERROR: Not a valid DDS file!\n";
+		std::cerr << "* ERROR: Not a valid DDS file!" << std::endl;
 		return 3;
 	}
 
@@ -201,7 +239,7 @@ int main(int argc, char* argv[]) {
 	// Map DDS format to TEX format
 	DWORD texFormat = mapDDSPixelFormatToTEX(ddsHeader.ddspf, isCubemap);
 	if (texFormat == 0) {
-		std::cerr << "* ERROR: Conversion failed due to unsupported format.\n";
+		std::cerr << "* ERROR: Conversion failed due to unsupported format." << std::endl;
 		return 1;
 	}
 
