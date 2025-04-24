@@ -15,11 +15,14 @@
 #include <vector>
 #include <sstream>
 #include <iomanip>
+#include <getopt.h>
+#include <algorithm>
+#include <cctype>
 
-bool quiet = false;	// Quiet mode flag
-bool ps3 = false;	// Dafault is false
+std::string platform = "pc";	// PC is the default platform
 bool forcedxtone = false;	// DXT1 compression mode flag
 bool forcedxtfive = false;	// DXT5 compression mode flag
+bool quiet = false;	// Quiet mode flag
 
 typedef uint32_t DWORD;
 typedef uint8_t BYTE;
@@ -73,15 +76,17 @@ void createDirectories(const std::string& path) {
 // Function to print the help message
 void printHelpMessage() {
 	std::cout << std::endl;
-	std::cout << "👻 GBTVGR DDS to TEX Converter v0.2.0" << std::endl;
+	std::cout << "👻 GBTVGR DDS to TEX Converter v0.3.0" << std::endl;
 	std::cout << std::endl;
 	std::cout << "Usage: dds2tex <input_file.dds> [options]" << std::endl;
 	std::cout << std::endl;
 	std::cout << "Options:" << std::endl;
-	std::cout << "  -o, --output <output_file.tex>	Specify the output TEX file path and name" << std::endl;
-	std::cout << "  --ps3					Output tex files for the PlayStation 3 version of the game" << std::endl;
-	std::cout << "  -q, --quiet				Disable output messages" << std::endl;
-	std::cout << "  -h, --help				Show this help message and exit" << std::endl;
+	std::cout << "  -i, --input <input_file.dds>		Specify the input DDS file path and name." << std::endl;
+	std::cout << "  -o, --output <output_file.tex>	Specify the output TEX file path and name." << std::endl;
+	std::cout << "  -p, --platform <platform>		Output tex file for the <platform> version of the game." << std::endl;
+	std::cout << "					Supported platforms are 'pc' or 'ps3'. Default is 'pc'." << std::endl;
+	std::cout << "  -q, --quiet				Disable output messages." << std::endl;
+	std::cout << "  -h, --help				Show this help message and exit." << std::endl;
 	std::cout << std::endl;
 	std::cout << std::endl;
 	std::cout << "Copyright © 2025 KeyofBlueS: <https://github.com/KeyofBlueS>." << std::endl;
@@ -99,9 +104,9 @@ DWORD mapDDSPixelFormatToTEX(const DDS_PIXELFORMAT& ddsPixelFormat, DWORD cubema
 	//std::cout << "dwBBitMask: " << ddsPixelFormat.dwBBitMask << std::endl;
 	//std::cout << "dwABitMask: " << ddsPixelFormat.dwABitMask << std::endl;
 	if (ddsPixelFormat.dwFourCC == 0x31545844) {	// "DXT1"
-		if (!ps3) {
+		if (platform == "pc") {
 			return 0x2b;
-		} else {
+		} else if (platform == "ps3") {
 			return 0x2c;
 		}
 	}
@@ -109,22 +114,22 @@ DWORD mapDDSPixelFormatToTEX(const DDS_PIXELFORMAT& ddsPixelFormat, DWORD cubema
 		return 0x17;
 	}
 	if (ddsPixelFormat.dwFourCC == 0x35545844) {	// "DXT5"
-		if (!ps3) {
+		if (platform == "pc") {
 			return 0x32;
-		} else {
+		} else if (platform == "ps3") {
 			return 0x34;
 		}
 	}
 	if (ddsPixelFormat.dwRGBBitCount == 32 && ddsPixelFormat.dwRBitMask == 0x00FF0000) {	// A8R8G8B8
-		if (!ps3) {
+		if (platform == "pc") {
 			return cubemapFlag ? 0x18 : 0x03;	// (0x18 if cubemap)
-		} else {
+		} else if (platform == "ps3") {
 			std::cerr << "* ERROR: Unsupported DDS format. Save the DDS as BC3 / DXT5 first." << std::endl;
 			return 0;
 			//return cubemapFlag ? 0x26 : 0x27;	// (0x26 if cubemap)
 		}
 	}
-	if (ps3) {
+	if (platform == "ps3") {
 		if (ddsPixelFormat.dwRGBBitCount == 32 && ddsPixelFormat.dwBBitMask == 0x00FF0000) {	// RGBA8888
 			std::cerr << "* ERROR: Unsupported DDS format. Save the DDS as BC3 / DXT5 first." << std::endl;
 			return 0;
@@ -135,9 +140,9 @@ DWORD mapDDSPixelFormatToTEX(const DDS_PIXELFORMAT& ddsPixelFormat, DWORD cubema
 		return 0x2e;
 	}
 	if (ddsPixelFormat.dwRGBBitCount == 16 && ddsPixelFormat.dwRBitMask == 0x00FF && ddsPixelFormat.dwABitMask == 0xFF00) {	// A8L8
-		if (!ps3) {
+		if (platform == "pc") {
 			return 0x2f;
-		} else {
+		} else if (platform == "ps3") {
 			return 0x31;
 		}
 	}
@@ -172,38 +177,84 @@ bool validateDDSFile(const std::string& filePath) {
 
 // Main function
 int main(int argc, char* argv[]) {
-	std::string inputFile, outputFile;
+
+	std::string inputFile;
+	std::string outputFile;
+	bool argError = false;
+
+	// Define the long options for getopt
+	struct option long_options[] = {
+		{"input", required_argument, nullptr, 'i'},
+		{"output", required_argument, nullptr, 'o'},
+		{"platform", required_argument, nullptr, 'p'},
+		{"dxt1", no_argument, nullptr, '1'},
+		{"dxt5", no_argument, nullptr, '5'},
+		{"quiet", no_argument, nullptr, 'q'},
+		{"help", no_argument, nullptr, 'h'},
+		{nullptr, 0, nullptr, 0}	// Terminate the list of options
+	};
 
 	// Parse command-line arguments
-	for (int i = 1; i < argc; ++i) {
-		std::string arg = argv[i];
+	int opt;
+	int option_index = 0;
+	while ((opt = getopt_long(argc, argv, "i:o:p:15qh", long_options, &option_index)) != -1) {
+		switch (opt) {
+			case 'i':
+				inputFile = optarg;
+				break;
+			case 'o':
+				outputFile = optarg;
+				break;
+			case 'p':
+				platform = optarg;
+				std::transform(platform.begin(), platform.end(), platform.begin(),
+								[](unsigned char c) { return std::tolower(c); });
+				break;
+			case '1':
+				forcedxtone = true;
+				break;
+			case '5':
+				forcedxtfive = true;
+				break;
+			case 'q':
+				quiet = true;
+				break;
+			case 'h':
+				printHelpMessage();
+				return 0;
+			case '?':
+			default:
+				argError = true;
+		}
+	}
 
-		if (arg == "-h" || arg == "--help") {
-			printHelpMessage();
-			return 0;
-		} else if (arg == "-o" || arg == "--output") {
-			if (i + 1 < argc) {
-				outputFile = argv[++i];	// Get the next argument as the output file
-			} else {
-				std::cerr << "* ERROR: Missing output file after " << arg << std::endl;
-				return 1;
-			}
-		} else if (arg == "--dxt1") {
-			forcedxtone = true;
-		} else if (arg == "--dxt5") {
-			forcedxtfive = true;
-		} else if (arg == "--ps3") {
-			ps3 = true;
-		} else if (arg == "-q" || arg == "--quiet") {
-			quiet = true;
-		} else {
+	// Remaining arguments (positional)
+	for (int i = optind; i < argc; ++i) {
+		std::string arg = argv[i];
+		if (arg.rfind("-", 0) == 0) {
+			argError = true;
+			return 1;
+		}
+		if (inputFile.empty()) {
 			inputFile = arg;
+		} else {
+			argError = true;
+			std::cerr << "* ERROR: Unexpected argument: " << arg << std::endl;
 		}
 	}
 
 	// Check if input file is provided
 	if (inputFile.empty()) {
+		argError = true;
 		std::cerr << "* ERROR: No input file specified." << std::endl;
+	}
+
+	if (platform != "pc" && platform != "ps3") {
+		argError = true;
+		std::cerr << "* ERROR: Unsupported platform: '" << platform << "'. Supported platforms are 'pc' or 'ps3'." << std::endl;
+	}
+
+	if (argError) {
 		printHelpMessage();
 		return 1;
 	}
