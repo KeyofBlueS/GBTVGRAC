@@ -47,7 +47,7 @@ void createDirectories(const std::string& path) {
 // Function to print the help message
 void printHelpMessage() {
 	std::cout << std::endl;
-	std::cout << "👻 GBTVGR SMP to OGG Converter v0.0.1" << std::endl;
+	std::cout << "👻 GBTVGR SMP to OGG Converter v0.1.0" << std::endl;
 	std::cout << std::endl;
 	std::cout << "Usage: smp2ogg <input_file.smp> [options]" << std::endl;
 	std::cout << std::endl;
