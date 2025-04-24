@@ -1,5 +1,5 @@
 /*  Ghostbusters The Video Game OGG to SMP Converter
-	Copyright 2024 KeyofBlueS
+	Copyright 2025 KeyofBlueS
 
 	The Ghostbusters The Video Game OGG to SMP Converter is free software;
 	you can redistribute it and/or modify it under the terms of the
@@ -17,6 +17,7 @@
 #include <vorbis/codec.h>
 #include <vorbis/vorbisfile.h>
 #include <algorithm>
+#include <getopt.h>
 
 bool quiet = false;	// Quiet mode flag
 
@@ -151,51 +152,85 @@ void createDirectories(const std::string& path) {
 
 // Function to print the help message
 void printHelpMessage() {
-	std::cout << "\n";
-	std::cout << "👻 GBTVGR OGG to SMP Converter v0.1.0\n";
-	std::cout << "\n";
-	std::cout << "Usage: ogg2smp <input_file.ogg> [options]\n";
-	std::cout << "\n";
-	std::cout << "Options:\n";
-	std::cout << "  -o, --output <output_file.smp>	Specify the output SMP file path and name\n";
-	std::cout << "  -q, --quiet				Disable output messages\n";
-	std::cout << "  -h, --help				Show this help message and exit\n";
-	std::cout << "\n";
-	std::cout << "\n";
-	std::cout << "Copyright © 2024 KeyofBlueS: <https://github.com/KeyofBlueS>.\n";
-	std::cout << "License GPLv3+: GNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>.\n";
-	std::cout << "This is free software: you are free to change and redistribute it.\n";
-	std::cout << "There is NO WARRANTY, to the extent permitted by law.\n";
+	std::cout << std::endl;
+	std::cout << "👻 GBTVGR OGG to SMP Converter v0.2.0" << std::endl;
+	std::cout << std::endl;
+	std::cout << "Usage: ogg2smp <input_file.ogg> [options]" << std::endl;
+	std::cout << std::endl;
+	std::cout << "Options:" << std::endl;
+	std::cout << "  -i, --input <input_file.dds>		Specify the input OGG file path and name." << std::endl;
+	std::cout << "  -o, --output <output_file.smp>	Specify the output SMP file path and name." << std::endl;
+	std::cout << "  -q, --quiet				Disable output messages." << std::endl;
+	std::cout << "  -h, --help				Show this help message and exit." << std::endl;
+	std::cout << std::endl;
+	std::cout << std::endl;
+	std::cout << "Copyright © 2025 KeyofBlueS: <https://github.com/KeyofBlueS>." << std::endl;
+	std::cout << "License GPLv3+: GNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>." << std::endl;
+	std::cout << "This is free software: you are free to change and redistribute it." << std::endl;
+	std::cout << "There is NO WARRANTY, to the extent permitted by law." << std::endl;
 }
 
 // Main function
 int main(int argc, char* argv[]) {
-	std::string inputFile, outputFile;
+
+	std::string inputFile;
+	std::string outputFile;
+	bool argError = false;
+
+	// Define the long options for getopt
+	struct option long_options[] = {
+		{"input", required_argument, nullptr, 'i'},
+		{"output", required_argument, nullptr, 'o'},
+		{"quiet", no_argument, nullptr, 'q'},
+		{"help", no_argument, nullptr, 'h'},
+		{nullptr, 0, nullptr, 0}	// Terminate the list of options
+	};
 
 	// Parse command-line arguments
-	for (int i = 1; i < argc; ++i) {
-		std::string arg = argv[i];
-
-		if (arg == "-h" || arg == "--help") {
-			printHelpMessage();
-			return 0;
-		} else if (arg == "-o" || arg == "--output") {
-			if (i + 1 < argc) {
-				outputFile = argv[++i];	// Get the next argument as the output file
-			} else {
-				std::cerr << "* ERROR: Missing output file after " << arg << std::endl;
-				return 1;
-			}
-		} else if (arg == "-q" || arg == "--quiet") {
-			quiet = true;
-		} else {
-			inputFile = arg;
+	int opt;
+	int option_index = 0;
+	while ((opt = getopt_long(argc, argv, "i:o:qh", long_options, &option_index)) != -1) {
+		switch (opt) {
+			case 'i':
+				inputFile = optarg;
+				break;
+			case 'o':
+				outputFile = optarg;
+				break;
+			case 'q':
+				quiet = true;
+				break;
+			case 'h':
+				printHelpMessage();
+				return 0;
+			case '?':
+			default:
+				argError = true;
 		}
 	}
 
-	// Validate input file
+	// Remaining arguments (positional)
+	for (int i = optind; i < argc; ++i) {
+		std::string arg = argv[i];
+		if (arg.rfind("-", 0) == 0) {
+			argError = true;
+			return 1;
+		}
+		if (inputFile.empty()) {
+			inputFile = arg;
+		} else {
+			argError = true;
+			std::cerr << "* ERROR: Unexpected argument: " << arg << std::endl;
+		}
+	}
+
+	// Check if input file is provided
 	if (inputFile.empty()) {
-		std::cerr << "* ERROR: No input file specified.\n";
+		argError = true;
+		std::cerr << "* ERROR: No input file specified." << std::endl;
+	}
+
+	if (argError) {
 		printHelpMessage();
 		return 1;
 	}
@@ -254,7 +289,7 @@ int main(int argc, char* argv[]) {
 	outFile.put(0x65);			// byte 12
 	outFile.put(0x53);			// byte 13
 	addPadding(outFile, 10);	// bytes from 14 to 23
-	outFile.write(hexToByteString(duration_hex_rev).c_str(), 4);	// bytes from 32 to 35 (subtitle timing?)
+	outFile.write(hexToByteString(duration_hex_rev).c_str(), 4);	// bytes from 24 to 27 (subtitle timing?)
 	outFile.put(0xa0);			// byte 28
 	addPadding(outFile, 3);		// bytes from 29 to 31
 	outFile.write(hexToByteString(dimension_hex_rev).c_str(), 4);	// bytes from 32 to 35 (.ogg file size in bytes)

@@ -1,7 +1,7 @@
 /*  Ghostbusters The Video Game TEX to DDS Converter
 	Copyright 2010 Jonathan Wilson
 	Copyright barncastle
-	Copyright 2024 KeyofBlueS - https://github.com/KeyofBlueS
+	Copyright 2025 KeyofBlueS - https://github.com/KeyofBlueS
 
 	The Ghostbusters The Video Game TEX to DDS Converter is free software;
 	you can redistribute it and/or modify it under the terms of the
@@ -18,6 +18,7 @@
 #include <filesystem>
 #include <cstdio>
 #include <vector>
+#include <getopt.h>
 
 typedef uint32_t DWORD;
 typedef uint8_t BYTE;
@@ -139,51 +140,85 @@ void createDirectories(const std::string& path) {
 
 // Function to print the help message
 void printHelpMessage() {
-	std::cout << "\n";
-	std::cout << "👻 GBTVGR TEX to DDS Converter v0.3.0\n";
-	std::cout << "\n";
-	std::cout << "Usage: tex2dds <input_file.tex> [options]\n";
-	std::cout << "\n";
-	std::cout << "Options:\n";
-	std::cout << "  -o, --output <output_file.dds>	Specify the output DDS file path and name\n";
-	std::cout << "  -q, --quiet				Disable output messages\n";
-	std::cout << "  -h, --help				Show this help message and exit\n";
-	std::cout << "\n";
-	std::cout << "\n";
-	std::cout << "Copyright © 2024 KeyofBlueS: <https://github.com/KeyofBlueS>.\n";
-	std::cout << "License GPLv3+: GNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>.\n";
-	std::cout << "This is free software: you are free to change and redistribute it.\n";
-	std::cout << "There is NO WARRANTY, to the extent permitted by law.\n";
+	std::cout << std::endl;
+	std::cout << "👻 GBTVGR TEX to DDS Converter v0.4.0" << std::endl;
+	std::cout << std::endl;
+	std::cout << "Usage: tex2dds <input_file.tex> [options]" << std::endl;
+	std::cout << std::endl;
+	std::cout << "Options:" << std::endl;
+	std::cout << "  -i, --input <input_file.dds>		Specify the input TEX file path and name." << std::endl;
+	std::cout << "  -o, --output <output_file.dds>	Specify the output DDS file path and name." << std::endl;
+	std::cout << "  -q, --quiet				Disable output messages." << std::endl;
+	std::cout << "  -h, --help				Show this help message and exit." << std::endl;
+	std::cout << std::endl;
+	std::cout << std::endl;
+	std::cout << "Copyright © 2025 KeyofBlueS: <https://github.com/KeyofBlueS>." << std::endl;
+	std::cout << "License GPLv3+: GNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>." << std::endl;
+	std::cout << "This is free software: you are free to change and redistribute it." << std::endl;
+	std::cout << "There is NO WARRANTY, to the extent permitted by law." << std::endl;
 }
 
 // Main function
 int main(int argc, char* argv[]) {
-	std::string inputFile, outputFile;
+
+	std::string inputFile;
+	std::string outputFile;
+	bool argError = false;
+
+	// Define the long options for getopt
+	struct option long_options[] = {
+		{"input", required_argument, nullptr, 'i'},
+		{"output", required_argument, nullptr, 'o'},
+		{"quiet", no_argument, nullptr, 'q'},
+		{"help", no_argument, nullptr, 'h'},
+		{nullptr, 0, nullptr, 0}	// Terminate the list of options
+	};
 
 	// Parse command-line arguments
-	for (int i = 1; i < argc; ++i) {
-		std::string arg = argv[i];
-
-		if (arg == "-h" || arg == "--help") {
-			printHelpMessage();
-			return 0;
-		} else if (arg == "-o" || arg == "--output") {
-			if (i + 1 < argc) {
-				outputFile = argv[++i];	// Get the next argument as the output file
-			} else {
-				std::cerr << "* ERROR: Missing output file after " << arg << std::endl;
-				return 1;
-			}
-		} else if (arg == "-q" || arg == "--quiet") {
-			quiet = true;
-		} else {
-			inputFile = arg;
+	int opt;
+	int option_index = 0;
+	while ((opt = getopt_long(argc, argv, "i:o:qh", long_options, &option_index)) != -1) {
+		switch (opt) {
+			case 'i':
+				inputFile = optarg;
+				break;
+			case 'o':
+				outputFile = optarg;
+				break;
+			case 'q':
+				quiet = true;
+				break;
+			case 'h':
+				printHelpMessage();
+				return 0;
+			case '?':
+			default:
+				argError = true;
 		}
 	}
 
-	// Validate input file
+	// Remaining arguments (positional)
+	for (int i = optind; i < argc; ++i) {
+		std::string arg = argv[i];
+		if (arg.rfind("-", 0) == 0) {
+			argError = true;
+			return 1;
+		}
+		if (inputFile.empty()) {
+			inputFile = arg;
+		} else {
+			argError = true;
+			std::cerr << "* ERROR: Unexpected argument: " << arg << std::endl;
+		}
+	}
+
+	// Check if input file is provided
 	if (inputFile.empty()) {
-		std::cerr << "* ERROR: No input file specified.\n";
+		argError = true;
+		std::cerr << "* ERROR: No input file specified." << std::endl;
+	}
+
+	if (argError) {
 		printHelpMessage();
 		return 1;
 	}
@@ -241,8 +276,9 @@ int main(int argc, char* argv[]) {
 	}
 
 	switch (texHeader.dwFormat) {
-	case 0x27:
-	case 0x03:
+	case 0x03:	// PC
+	case 0x27:	// PS3
+	case 0x16:	// XBOX360
 		ddsHeader.ddspf = DDSPF_A8R8G8B8;
 		break;
 	case 0x04:
@@ -254,12 +290,15 @@ int main(int argc, char* argv[]) {
 	case 0x17:
 		ddsHeader.ddspf = DDSPF_DXT3;
 		break;
-	case 0x2C:
-	case 0x2B:
+	case 0x2B:	// PC
+	case 0x2C:	// PS3
+	case 0x28:	// XBOX360
 		ddsHeader.ddspf = DDSPF_DXT1;
 		break;
-	case 0x26:
-	case 0x18:
+	case 0x18:	// PC
+	case 0x26:	// PS3
+	case 0x36:	// XBOX360
+	case 0x1b:	// XBOX360
 		ddsHeader.ddspf = DDSPF_A8R8G8B8;
 		ddsHeader.dwSurfaceFlags |= DDS_SURFACE_FLAGS_CUBEMAP;
 		ddsHeader.dwCubemapFlags = DDS_CUBEMAP_ALLFACES;
@@ -267,12 +306,14 @@ int main(int argc, char* argv[]) {
 	case 0x2E:
 		ddsHeader.ddspf = DDSPF_A16B16G16R16F;
 		break;
-	case 0x31:
-	case 0x2F:
+	case 0x2F:	// PC
+	case 0x31:	// PS3
+	case 0x30:	// XBOX360
 		ddsHeader.ddspf = DDSPF_A8L8;
 		break;
-	case 0x34:
-	case 0x32:
+	case 0x32:	// PC
+	case 0x34:	// PS3
+	case 0x33:	// XBOX360
 		ddsHeader.ddspf = DDSPF_DXT5;
 		break;
 	case 0x37:
