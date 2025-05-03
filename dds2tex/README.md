@@ -26,10 +26,10 @@ $ ./dds2tex <input_file.dds> [OPTIONS]
 ```
 ```
 Options:
-  -i, --input <input_file.dds>          Specify the input DDS file path and name.
-  -o, --output <output_file.tex>        Specify the output TEX file path and name.
-  -p, --platform <platform>             Output tex file for the <platform> version of the game.
-                                        Supported platforms are 'pc', 'ps3' or 'xbox360'. Default is 'pc'.
+  -i, --input <input_file.dds>      Specify the input DDS file path and name.
+  -o, --output <output_file.tex>    Specify the output TEX file path and name.
+  -p, --platform <platform>         Output tex file for the <platform> version of the game.
+                                    Supported platforms are 'pc', 'ps3' or 'xbox360'. Default is 'pc'.
   -q, --quiet                       Disable output messages.
   -h, --help                        Show this help message and exit.
 ```
