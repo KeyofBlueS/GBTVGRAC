@@ -2,21 +2,25 @@
 
 These tools are designed to convert texture (TEX <-> DDS) and audio (SMP <-> OGG) assets for use in Ghostbusters: The Video Game and its remastered version.
 
-- **tex2dds**: Converts TEX files to DDS for both the original and remastered versions of Ghostbusters: The Video Game.
-- **dds2tex**: Converts DDS files back to TEX (tested with the remastered version, theoretically compatible with the original).
-- **smp2ogg**: Converts SMP audio files to OGG for the remastered game.
-- **ogg2smp**: Converts OGG audio files back to SMP for the remastered game.
+**tex2dds:** Converts TEX files, whether from the original game (PC, PS3, Xbox 360) or the remastered version (PC), into DDS format.
+
+**dds2tex:** Converts DDS files to TEX format for both the original game (PC, PS3, Xbox 360) and the remastered version (PC).
+
+**smp2ogg:** Converts SMP audio files from the remastered version (PC) into OGG format.
+
+**ogg2smp:** Converts OGG audio files to SMP format specifically for the remastered version (PC).
 
 
-# Build Instructions:
+# General build Instructions:
 
-To compile these tools on Linux, use the following command:
+To compile these tools, use the following command:
 
 `g++ -static -o <toolname> <toolname>.cpp`
 
 To cross-compile for Windows (from Linux), use:
 
 `x86_64-w64-mingw32-g++ -static -o <toolname> <toolname>.cpp`
+
 
 # Usage:
 
@@ -25,10 +29,11 @@ Run the converter by specifying the input asset file:
 $ ./<toolname> <input_file> [OPTIONS]
 ```
 ```
-Options:
-  -o, --output <output_file>        Specify the output file path and name
-  -q, --quiet                       Disable output messages
-  -h, --help                        Show this help message and exit
+Common options:
+  -i, --input <input_file>          Specify the input file path and name.
+  -o, --output <output_file>        Specify the output file path and name.
+  -q, --quiet                       Disable output messages.
+  -h, --help                        Show this help message and exit.
 ```
 
 Alternatively, you can drag and drop an asset file onto the executable.
