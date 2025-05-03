@@ -442,6 +442,7 @@ int main(int argc, char* argv[]) {
 	int blockWidthHeight;
 	int blockPixelSize;
 	int texelBytePitch;
+
 	switch (texHeader.dwFormat) {
 	case 0x27:	// PS3 OK
 		needsUnswizzle = true;
