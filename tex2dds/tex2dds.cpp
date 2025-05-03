@@ -19,6 +19,10 @@
 #include <cstdio>
 #include <vector>
 #include <getopt.h>
+#include <cstring>
+#include <algorithm>
+#include <stdexcept>
+#include <cstdint>
 
 typedef uint32_t DWORD;
 typedef uint8_t BYTE;
@@ -113,6 +117,116 @@ struct TEX_Header
 	DWORD dwUnknown30;
 };
 
+inline uint32_t swap16(uint16_t val) {
+	return (val << 8) | (val >> 8);
+}
+
+inline int xgAddress2DTiledX(int blockOffset, int widthInBlocks, int texelBytePitch) {
+	int alignedWidth = (widthInBlocks + 31) & ~31;
+	int logBpp = (texelBytePitch >> 2) + ((texelBytePitch >> 1) >> (texelBytePitch >> 2));
+	int offsetByte = blockOffset << logBpp;
+	int offsetTile = (((offsetByte & ~0xFFF) >> 3) + ((offsetByte & 0x700) >> 2) + (offsetByte & 0x3F));
+	int offsetMacro = offsetTile >> (7 + logBpp);
+
+	int macroX = (offsetMacro % (alignedWidth >> 5)) << 2;
+	int tile = (((offsetTile >> (5 + logBpp)) & 2) + (offsetByte >> 6)) & 3;
+	int macro = (macroX + tile) << 3;
+	int micro = ((((offsetTile >> 1) & ~0xF) + (offsetTile & 0xF)) & ((texelBytePitch << 3) - 1)) >> logBpp;
+
+	return macro + micro;
+}
+
+inline int xgAddress2DTiledY(int blockOffset, int widthInBlocks, int texelBytePitch) {
+	int alignedWidth = (widthInBlocks + 31) & ~31;
+	int logBpp = (texelBytePitch >> 2) + ((texelBytePitch >> 1) >> (texelBytePitch >> 2));
+	int offsetByte = blockOffset << logBpp;
+	int offsetTile = (((offsetByte & ~0xFFF) >> 3) + ((offsetByte & 0x700) >> 2) + (offsetByte & 0x3F));
+	int offsetMacro = offsetTile >> (7 + logBpp);
+
+	int macroY = (offsetMacro / (alignedWidth >> 5)) << 2;
+	int tile = ((offsetTile >> (6 + logBpp)) & 1) + ((offsetByte & 0x800) >> 10);
+	int macro = (macroY + tile) << 3;
+	int micro = (((offsetTile & ((texelBytePitch << 6) - 1 & ~0x1F)) + ((offsetTile & 0xF) << 1)) >> (3 + logBpp)) & ~1;
+
+	return macro + micro + ((offsetTile & 0x10) >> 4);
+}
+
+void unswizzle_x360(const std::vector<uint8_t>& input, std::vector<uint8_t>& output, int width, int height, int block_pixel_size, int texel_byte_pitch) {
+	const int widthInBlocks = width / block_pixel_size;
+	const int heightInBlocks = height / block_pixel_size;
+
+	std::vector<uint8_t> swapped(input.size());
+	if (input.size() % 2 != 0)
+		throw std::runtime_error("Data size must be a multiple of 2 bytes!");
+
+	for (size_t i = 0; i < input.size(); i += 2) {
+		swapped[i]	 = input[i + 1];
+		swapped[i + 1] = input[i];
+	}
+
+	output.resize(input.size());
+
+	for (int j = 0; j < heightInBlocks; ++j) {
+		for (int i = 0; i < widthInBlocks; ++i) {
+			int blockOffset = j * widthInBlocks + i;
+			int x = xgAddress2DTiledX(blockOffset, widthInBlocks, texel_byte_pitch);
+			int y = xgAddress2DTiledY(blockOffset, widthInBlocks, texel_byte_pitch);
+
+			int srcByteOffset = j * widthInBlocks * texel_byte_pitch + i * texel_byte_pitch;
+			int dstByteOffset = y * widthInBlocks * texel_byte_pitch + x * texel_byte_pitch;
+
+			if (dstByteOffset + texel_byte_pitch > output.size() ||
+				srcByteOffset + texel_byte_pitch > swapped.size())
+				continue;
+
+			std::memcpy(&output[dstByteOffset], &swapped[srcByteOffset], texel_byte_pitch);
+		}
+	}
+}
+
+inline size_t calculate_morton_index(size_t t, size_t width, size_t height) {
+	size_t num1 = 1, num2 = 1, num3 = t;
+	size_t t_width = width, t_height = height;
+	size_t num6 = 0, num7 = 0;
+
+	while (t_width > 1 || t_height > 1) {
+		if (t_width > 1) {
+			num6 += num2 * (num3 & 1);
+			num3 >>= 1;
+			num2 *= 2;
+			t_width >>= 1;
+		}
+		if (t_height > 1) {
+			num7 += num1 * (num3 & 1);
+			num3 >>= 1;
+			num1 *= 2;
+			t_height >>= 1;
+		}
+	}
+
+	return num7 * width + num6;
+}
+
+void unswizzle_morton(const std::vector<uint8_t>& input, std::vector<uint8_t>& output, int width, int height, int bytes_per_pixel, int block_width_height = 1) {
+	int block_size_bytes = bytes_per_pixel * block_width_height * block_width_height;
+
+	int blocks_w = width / block_width_height;
+	int blocks_h = height / block_width_height;
+	int total_blocks = blocks_w * blocks_h;
+
+	output.resize(input.size());
+	size_t source_index = 0;
+
+	for (int t = 0; t < total_blocks; ++t) {
+		size_t index = calculate_morton_index(t, blocks_w, blocks_h);
+		size_t destination_index = index * block_size_bytes;
+
+		std::memcpy(&output[destination_index], &input[source_index], block_size_bytes);
+
+		source_index += block_size_bytes;
+	}
+}
+
 // Function to validate the input file
 bool checkFileSignature(const std::string& filePath, const std::string& expectedSignature) {
 	std::ifstream file(filePath, std::ios::binary);
@@ -141,7 +255,7 @@ void createDirectories(const std::string& path) {
 // Function to print the help message
 void printHelpMessage() {
 	std::cout << std::endl;
-	std::cout << "👻 GBTVGR TEX to DDS Converter v0.4.0" << std::endl;
+	std::cout << "👻 GBTVGR TEX to DDS Converter v0.5.0" << std::endl;
 	std::cout << std::endl;
 	std::cout << "Usage: tex2dds <input_file.tex> [options]" << std::endl;
 	std::cout << std::endl;
@@ -234,8 +348,6 @@ int main(int argc, char* argv[]) {
 	std::string input = "tex";
 	std::string output = "dds";
 
-	//setConsoleTitleAndPrint("👻 GBTVGR Converter", "👻 GBTVGR TEX to DDS Converter v0.2.0:");
-
 	// Check if the file has a valid TEX header
 	if (!checkFileSignature(inputFile, "07000000")) {
 		std::cerr << "* ERROR: \"" << inputFile << "\" is not a valid TEX!" << std::endl;
@@ -256,7 +368,8 @@ int main(int argc, char* argv[]) {
 
 	// Determine file size
 	texFile.seekg(0, std::ios::end);
-	size_t fileSize = texFile.tellg() - sizeof(TEX_Header);
+	//size_t fileSize = texFile.tellg() - sizeof(TEX_Header);
+	size_t fileSize = static_cast<size_t>(texFile.tellg()) - sizeof(TEX_Header);
 	texFile.seekg(sizeof(TEX_Header), std::ios::beg);
 
 	// Read TEX data
@@ -324,6 +437,55 @@ int main(int argc, char* argv[]) {
 			return 1;
 	}
 
+	bool needsUnswizzle = false;
+	std::string swizzleType;
+	int blockWidthHeight;
+	int blockPixelSize;
+	int texelBytePitch;
+	switch (texHeader.dwFormat) {
+	case 0x27:	// PS3 OK
+		needsUnswizzle = true;
+		swizzleType = "morton";
+		blockWidthHeight = 1;
+		break;
+	case 0x16:	// XBOX360
+		needsUnswizzle = true;
+		swizzleType = "x360";
+		blockPixelSize = 1;
+		texelBytePitch = 4;
+		break;
+	case 0x28:	// XBOX360
+		needsUnswizzle = true;
+		swizzleType = "x360";
+		blockPixelSize = 4;
+		texelBytePitch = 8;
+		break;
+	case 0x26:	// PS3
+	case 0x36:	// XBOX360
+	case 0x1b:	// XBOX360
+		needsUnswizzle = true;
+		swizzleType = "morton";
+		blockWidthHeight = 1;
+		break;
+	case 0x31:	// PS3
+		needsUnswizzle = true;
+		swizzleType = "morton";
+		blockWidthHeight = 1;
+		break;
+	case 0x30:	// XBOX360
+		needsUnswizzle = true;
+		swizzleType = "x360";
+		blockPixelSize = 1;
+		texelBytePitch = 2;
+		break;
+	case 0x33:	// XBOX360
+		needsUnswizzle = true;
+		swizzleType = "x360";
+		blockPixelSize = 4;
+		texelBytePitch = 16;
+		break;
+	}
+
 	// Create output directory if not exists
 	std::string outputPath = std::filesystem::path(outputFile).parent_path().string();
 	createDirectories(outputPath);
@@ -333,6 +495,20 @@ int main(int argc, char* argv[]) {
 	if (!ddsFile.is_open()) {
 		std::cerr << "* ERROR: Unable to open output file: " << outputFile << std::endl;
 		return 1;
+	}
+
+	if (needsUnswizzle) {
+		std::vector<uint8_t> unswizzled(texData.size());
+		if (swizzleType == "x360") {
+			unswizzle_x360(reinterpret_cast<const std::vector<uint8_t>&>(texData), unswizzled, texHeader.dwWidth, texHeader.dwHeight, blockPixelSize, texelBytePitch);
+		} else if (swizzleType == "morton") {
+			int bytesPerPixel = (ddsHeader.ddspf.dwRGBBitCount + 7) / 8;
+			unswizzle_morton(reinterpret_cast<const std::vector<uint8_t>&>(texData), unswizzled, texHeader.dwWidth, texHeader.dwHeight, bytesPerPixel, blockWidthHeight);
+			for (size_t i = 0; i + 1 < unswizzled.size(); i += bytesPerPixel) {
+				std::reverse(unswizzled.begin() + i, unswizzled.begin() + i + bytesPerPixel);
+			}
+		}
+		texData = std::vector<char>(unswizzled.begin(), unswizzled.end());
 	}
 
 	// Write DDS file contents
