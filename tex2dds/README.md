@@ -32,7 +32,7 @@ Options:
   -h, --help                        Show this help message and exit.
 ```
 
-Alternatively, you can drag and drop an TEX file onto the executable.
+Alternatively, you can drag and drop a TEX file onto the executable.
 
 
 # Mass convert assets
