@@ -59,6 +59,7 @@ const DDS_PIXELFORMAT DDSPF_DXT3 = { DDS_PF_SIZE, DDS_FOURCC, MAKEFOURCC('D','X'
 const DDS_PIXELFORMAT DDSPF_DXT4 = { DDS_PF_SIZE, DDS_FOURCC, MAKEFOURCC('D','X','T','4'), 0, 0, 0, 0, 0 };
 const DDS_PIXELFORMAT DDSPF_DXT5 = { DDS_PF_SIZE, DDS_FOURCC, MAKEFOURCC('D','X','T','5'), 0, 0, 0, 0, 0 };
 const DDS_PIXELFORMAT DDSPF_A8R8G8B8 = { DDS_PF_SIZE, DDS_RGBA, 0, 32, 0x00FF0000, 0x0000FF00, 0x000000FF, 0xFF000000 };
+const DDS_PIXELFORMAT DDSPF_R8G8B8A8 = { DDS_PF_SIZE, DDS_RGBA, 0, 32, 0x000000FF, 0x0000FF00, 0x00FF0000, 0xFF000000 };
 const DDS_PIXELFORMAT DDSPF_A1R5G5B5 = { DDS_PF_SIZE, DDS_RGBA, 0, 16, 0x00007C00, 0x000003E0, 0x0000001F, 0x00008000 };
 const DDS_PIXELFORMAT DDSPF_A4R4G4B4 = { DDS_PF_SIZE, DDS_RGBA, 0, 16, 0x00000F00, 0x000000F0, 0x0000000F, 0x0000F000 };
 const DDS_PIXELFORMAT DDSPF_R8G8B8 = { DDS_PF_SIZE, DDS_RGB, 0, 24, 0x00FF0000, 0x0000FF00, 0x000000FF, 0x00000000 };
@@ -255,7 +256,7 @@ void createDirectories(const std::string& path) {
 // Function to print the help message
 void printHelpMessage() {
 	std::cout << std::endl;
-	std::cout << "👻 GBTVGR TEX to DDS Converter v0.5.0" << std::endl;
+	std::cout << "👻 GBTVGR TEX to DDS Converter v0.6.0" << std::endl;
 	std::cout << std::endl;
 	std::cout << "Usage: tex2dds <input_file.tex> [options]" << std::endl;
 	std::cout << std::endl;
@@ -391,8 +392,11 @@ int main(int argc, char* argv[]) {
 	switch (texHeader.dwFormat) {
 	case 0x03:	// PC
 	case 0x27:	// PS3
-	case 0x16:	// XBOX360
 		ddsHeader.ddspf = DDSPF_A8R8G8B8;
+		break;
+	case 0x16:	// XBOX360
+		ddsHeader.ddspf = DDSPF_R8G8B8A8;
+		ddsHeader.dwPitchOrLinearSize = texHeader.dwWidth * 4; // 4 bytes per pixel
 		break;
 	case 0x04:
 		ddsHeader.ddspf = DDSPF_R5G6B5;
@@ -442,6 +446,7 @@ int main(int argc, char* argv[]) {
 	int blockWidthHeight;
 	int blockPixelSize;
 	int texelBytePitch;
+	bool convertToRGBA = false;
 
 	switch (texHeader.dwFormat) {
 	case 0x27:	// PS3 OK
@@ -454,6 +459,7 @@ int main(int argc, char* argv[]) {
 		swizzleType = "x360";
 		blockPixelSize = 1;
 		texelBytePitch = 4;
+		convertToRGBA = true;
 		break;
 	case 0x28:	// XBOX360
 		needsUnswizzle = true;
@@ -510,6 +516,18 @@ int main(int argc, char* argv[]) {
 			}
 		}
 		texData = std::vector<char>(unswizzled.begin(), unswizzled.end());
+		if (convertToRGBA) {
+			for (size_t i = 0; i + 3 < texData.size(); i += 4) {
+				uint8_t a = static_cast<uint8_t>(texData[i + 1]);
+				uint8_t r = static_cast<uint8_t>(texData[i + 0]);
+				uint8_t g = static_cast<uint8_t>(texData[i + 2]);
+				uint8_t b = static_cast<uint8_t>(texData[i + 3]);
+				texData[i + 0] = r;
+				texData[i + 1] = g;
+				texData[i + 2] = b;
+				texData[i + 3] = a;
+			}
+		}
 	}
 
 	// Write DDS file contents
