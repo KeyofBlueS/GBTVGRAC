@@ -189,7 +189,7 @@ void createDirectories(const std::string& path) {
 // Function to print the help message
 void printHelpMessage() {
 	std::cout << std::endl;
-	std::cout << "👻 GBTVGR DDS to TEX Converter v0.4.0" << std::endl;
+	std::cout << "👻 GBTVGR DDS to TEX Converter v0.5.0" << std::endl;
 	std::cout << std::endl;
 	std::cout << "Usage: dds2tex <input_file.dds> [options]" << std::endl;
 	std::cout << std::endl;
@@ -243,12 +243,17 @@ DWORD mapDDSPixelFormatToTEX(const DDS_PIXELFORMAT& ddsPixelFormat, DWORD cubema
 		} else if (platform == "ps3") {
 			return cubemapFlag ? 0x26 : 0x27;	// (0x26 if cubemap)
 		} else if (platform == "xbox360") {
-			return cubemapFlag ? 0x36 : 0x16;	// (0x26 if cubemap)
+			return cubemapFlag ? 0x36 : 0x16;	// (0x36 if cubemap)
 		}
 	}
-	if (platform == "ps3") {
-		if (ddsPixelFormat.dwRGBBitCount == 32 && ddsPixelFormat.dwBBitMask == 0x00FF0000) {	// RGBA8888
-			return cubemapFlag ? 0x26 : 0x27;	// A8R8G8B8 (0x26 if cubemap)
+	if (ddsPixelFormat.dwRGBBitCount == 32 && ddsPixelFormat.dwBBitMask == 0x00FF0000) {	// RGBA8888
+		if (platform == "pc") {
+			std::cerr << "* ERROR: Unsupported DDS pixel format for the PC version of the game." << std::endl;
+			return 0;
+		} else if (platform == "ps3") {
+			return cubemapFlag ? 0x26 : 0x27;	// (0x26 if cubemap)
+		} else if (platform == "xbox360") {
+			return cubemapFlag ? 0x36 : 0x16;	// (0x36 if cubemap)
 		}
 	}
 	if (ddsPixelFormat.dwRGBBitCount == 64 && ddsPixelFormat.dwFourCC == 0x71) {	// A16B16G16R16F
@@ -448,6 +453,7 @@ int main(int argc, char* argv[]) {
 	int blockWidthHeight;
 	int blockPixelSize;
 	int texelBytePitch;
+	bool convertToRGBA = false;
 	
 	switch (texHeader.dwFormat) {
 	case 0x27:	// PS3 OK
@@ -460,6 +466,7 @@ int main(int argc, char* argv[]) {
 		swizzleType = "x360";
 		blockPixelSize = 1;
 		texelBytePitch = 4;
+		convertToRGBA = true;
 		break;
 	case 0x28:	// XBOX360
 		needsSwizzle = true;
@@ -515,6 +522,19 @@ int main(int argc, char* argv[]) {
 			}
 		}
 		ddsData = std::vector<char>(swizzled.begin(), swizzled.end());
+		if (convertToRGBA) {
+			//std::cout << "convertToRGBA: true" << std::endl;
+			for (size_t i = 0; i + 3 < ddsData.size(); i += 4) {
+				uint8_t a = static_cast<uint8_t>(ddsData[i + 0]);
+				uint8_t r = static_cast<uint8_t>(ddsData[i + 2]);
+				uint8_t g = static_cast<uint8_t>(ddsData[i + 1]);
+				uint8_t b = static_cast<uint8_t>(ddsData[i + 3]);
+				ddsData[i + 0] = r;
+				ddsData[i + 1] = g;
+				ddsData[i + 2] = b;
+				ddsData[i + 3] = a;
+			}
+		}
 	}
 
 	texFile.write(reinterpret_cast<const char*>(&texHeader), sizeof(TEX_Header));
