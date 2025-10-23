@@ -181,6 +181,79 @@ void swizzle_morton(const std::vector<uint8_t>& input, std::vector<uint8_t>& out
 	}
 }
 
+void swizzle_switch(
+	const std::vector<uint8_t>& input,
+	std::vector<uint8_t>& output,
+	int img_width,
+	int img_height,
+	int bytes_per_block,
+	int block_height,
+	int width_pad,
+	int height_pad)
+{
+
+	// Resize output buffer
+	output.resize(input.size());
+
+	int width_show = img_width;
+	int height_show = img_height;
+	int width_real = img_width;
+	int height_real = img_height;
+
+	// Pad dimensions to nearest multiple of width_pad / height_pad
+	if (img_width % width_pad != 0 || img_height % height_pad != 0) {
+		width_real = ((img_width + width_pad - 1) / width_pad) * width_pad;
+		height_real = ((img_height + height_pad - 1) / height_pad) * height_pad;
+		img_width = width_real;
+		img_height = height_real;
+	}
+
+	int image_width_in_gobs = img_width * bytes_per_block / 64;
+
+	// Perform swizzling
+	for (int Y = 0; Y < img_height; ++Y) {
+		for (int X = 0; X < img_width; ++X) {
+			size_t Z = static_cast<size_t>(Y) * img_width + X;
+
+			size_t gob_address =
+				static_cast<size_t>((Y / (8 * block_height)) * 512 * block_height * image_width_in_gobs) +
+				static_cast<size_t>((X * bytes_per_block / 64) * 512 * block_height) +
+				static_cast<size_t>(((Y % (8 * block_height)) / 8) * 512);
+
+			int Xb = X * bytes_per_block;
+
+			size_t address = gob_address
+				+ ((Xb % 64) / 32) * 256
+				+ ((Y % 8) / 2) * 64
+				+ ((Xb % 32) / 16) * 32
+				+ (Y % 2) * 16
+				+ (Xb % 16);
+
+			if (address + bytes_per_block <= output.size() &&
+				Z * bytes_per_block + bytes_per_block <= input.size()) {
+				std::memcpy(&output[address], &input[Z * bytes_per_block], bytes_per_block);
+			}
+		}
+	}
+
+	// Expand if dimensions were cropped
+	if (width_show != width_real || height_show != height_real) {
+		std::vector<uint8_t> cropped(width_show * height_show * bytes_per_block);
+
+		for (int Y = 0; Y < height_show; ++Y) {
+			size_t offset_in = static_cast<size_t>(Y) * width_real * bytes_per_block;
+			size_t offset_out = static_cast<size_t>(Y) * width_show * bytes_per_block;
+
+			if (offset_in + width_show * bytes_per_block <= input.size() &&
+				offset_out + width_show * bytes_per_block <= cropped.size()) {
+				std::memcpy(&cropped[offset_in], &input[offset_out], width_show * bytes_per_block);
+			}
+		}
+
+		output.swap(cropped);
+	}
+}
+
 // Function to create output directory
 void createDirectories(const std::string& path) {
 	std::filesystem::create_directories(path);
@@ -189,7 +262,7 @@ void createDirectories(const std::string& path) {
 // Function to print the help message
 void printHelpMessage() {
 	std::cout << std::endl;
-	std::cout << "👻 GBTVGR DDS to TEX Converter v0.5.0" << std::endl;
+	std::cout << "👻 GBTVGR DDS to TEX Converter v0.6.0" << std::endl;
 	std::cout << std::endl;
 	std::cout << "Usage: dds2tex <input_file.dds> [options]" << std::endl;
 	std::cout << std::endl;
@@ -197,7 +270,7 @@ void printHelpMessage() {
 	std::cout << "  -i, --input <input_file.dds>		Specify the input DDS file path and name." << std::endl;
 	std::cout << "  -o, --output <output_file.tex>	Specify the output TEX file path and name." << std::endl;
 	std::cout << "  -p, --platform <platform>		Output tex file for the <platform> version of the game." << std::endl;
-	std::cout << "					Supported platforms are 'pc', 'ps3' or 'xbox360'. Default is 'pc'." << std::endl;
+	std::cout << "					Supported platforms are 'pc', 'ps3', 'xbox360' or 'switch'. Default is 'pc'." << std::endl;
 	std::cout << "  -q, --quiet				Disable output messages." << std::endl;
 	std::cout << "  -h, --help				Show this help message and exit." << std::endl;
 	std::cout << std::endl;
@@ -254,6 +327,8 @@ DWORD mapDDSPixelFormatToTEX(const DDS_PIXELFORMAT& ddsPixelFormat, DWORD cubema
 			return cubemapFlag ? 0x26 : 0x27;	// (0x26 if cubemap)
 		} else if (platform == "xbox360") {
 			return cubemapFlag ? 0x36 : 0x16;	// (0x36 if cubemap)
+		} else if (platform == "switch") {
+			return cubemapFlag ? 0x3F : 0x41;	// (0x3F if cubemap???)
 		}
 	}
 	if (ddsPixelFormat.dwRGBBitCount == 64 && ddsPixelFormat.dwFourCC == 0x71) {	// A16B16G16R16F
@@ -371,9 +446,9 @@ int main(int argc, char* argv[]) {
 		std::cerr << "* ERROR: No input file specified." << std::endl;
 	}
 
-	if (platform != "pc" && platform != "ps3" && platform != "xbox360") {
+	if (platform != "pc" && platform != "ps3" && platform != "xbox360" && platform != "switch") {
 		argError = true;
-		std::cerr << "* ERROR: Unsupported platform: '" << platform << "'. Supported platforms are 'pc', 'ps3' or 'xbox360'." << std::endl;
+		std::cerr << "* ERROR: Unsupported platform: '" << platform << "'. Supported platforms are 'pc', 'ps3', 'xbox360' or 'switch'." << std::endl;
 	}
 
 	if (argError) {
@@ -454,6 +529,11 @@ int main(int argc, char* argv[]) {
 	int blockPixelSize;
 	int texelBytePitch;
 	bool convertToRGBA = false;
+
+	int bytes_per_block = 4;
+	int block_height = 8;
+	int width_pad = 8;
+	int height_pad = 8;
 	
 	switch (texHeader.dwFormat) {
 	case 0x27:	// PS3 OK
@@ -467,6 +547,19 @@ int main(int argc, char* argv[]) {
 		blockPixelSize = 1;
 		texelBytePitch = 4;
 		convertToRGBA = true;
+		break;
+	case 0x3C:	// SWITCH
+	case 0x3D:	// SWITCH
+	case 0x3E:	// SWITCH
+	case 0x3F:	// SWITCH
+	case 0x40:	// SWITCH
+	case 0x41:	// SWITCH
+		needsSwizzle = true;
+		swizzleType = "switch";
+		bytes_per_block = 4;
+		block_height = 16;
+		width_pad = 8;
+		height_pad = 8;
 		break;
 	case 0x28:	// XBOX360
 		needsSwizzle = true;
@@ -520,19 +613,24 @@ int main(int argc, char* argv[]) {
 			for (size_t i = 0; i + 1 < swizzled.size(); i += bytesPerPixel) {
 				std::reverse(swizzled.begin() + i, swizzled.begin() + i + bytesPerPixel);
 			}
+		} else if (swizzleType == "switch") {
+			swizzle_switch(reinterpret_cast<const std::vector<uint8_t>&>(ddsData), swizzled, texHeader.dwWidth, texHeader.dwHeight, bytes_per_block, block_height, width_pad, height_pad);
 		}
 		ddsData = std::vector<char>(swizzled.begin(), swizzled.end());
 		if (convertToRGBA) {
-			//std::cout << "convertToRGBA: true" << std::endl;
-			for (size_t i = 0; i + 3 < ddsData.size(); i += 4) {
-				uint8_t a = static_cast<uint8_t>(ddsData[i + 0]);
-				uint8_t r = static_cast<uint8_t>(ddsData[i + 2]);
-				uint8_t g = static_cast<uint8_t>(ddsData[i + 1]);
-				uint8_t b = static_cast<uint8_t>(ddsData[i + 3]);
-				ddsData[i + 0] = r;
-				ddsData[i + 1] = g;
-				ddsData[i + 2] = b;
-				ddsData[i + 3] = a;
+			switch (texHeader.dwFormat) {
+			case 0x16:	// XBOX360
+				for (size_t i = 0; i + 3 < ddsData.size(); i += 4) {
+					uint8_t a = static_cast<uint8_t>(ddsData[i + 0]);
+					uint8_t r = static_cast<uint8_t>(ddsData[i + 2]);
+					uint8_t g = static_cast<uint8_t>(ddsData[i + 1]);
+					uint8_t b = static_cast<uint8_t>(ddsData[i + 3]);
+					ddsData[i + 0] = r;
+					ddsData[i + 1] = g;
+					ddsData[i + 2] = b;
+					ddsData[i + 3] = a;
+				}
+				break;
 			}
 		}
 	}

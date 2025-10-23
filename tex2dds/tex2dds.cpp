@@ -228,6 +228,79 @@ void unswizzle_morton(const std::vector<uint8_t>& input, std::vector<uint8_t>& o
 	}
 }
 
+void unswizzle_switch(
+	const std::vector<uint8_t>& input,
+	std::vector<uint8_t>& output,
+	int img_width,
+	int img_height,
+	int bytes_per_block,
+	int block_height,
+	int width_pad,
+	int height_pad)
+{
+
+	// Resize output buffer
+	output.resize(input.size());
+
+	int width_show = img_width;
+	int height_show = img_height;
+	int width_real = img_width;
+	int height_real = img_height;
+
+	// Pad dimensions to nearest multiple of width_pad / height_pad
+	if (img_width % width_pad != 0 || img_height % height_pad != 0) {
+		width_real = ((img_width + width_pad - 1) / width_pad) * width_pad;
+		height_real = ((img_height + height_pad - 1) / height_pad) * height_pad;
+		img_width = width_real;
+		img_height = height_real;
+	}
+
+	int image_width_in_gobs = img_width * bytes_per_block / 64;
+
+	// Perform unswizzling
+	for (int Y = 0; Y < img_height; ++Y) {
+		for (int X = 0; X < img_width; ++X) {
+			size_t Z = static_cast<size_t>(Y) * img_width + X;
+
+			size_t gob_address =
+				static_cast<size_t>((Y / (8 * block_height)) * 512 * block_height * image_width_in_gobs) +
+				static_cast<size_t>((X * bytes_per_block / 64) * 512 * block_height) +
+				static_cast<size_t>(((Y % (8 * block_height)) / 8) * 512);
+
+			int Xb = X * bytes_per_block;
+
+			size_t address = gob_address
+				+ ((Xb % 64) / 32) * 256
+				+ ((Y % 8) / 2) * 64
+				+ ((Xb % 32) / 16) * 32
+				+ (Y % 2) * 16
+				+ (Xb % 16);
+
+			if (address + bytes_per_block <= input.size() &&
+				Z * bytes_per_block + bytes_per_block <= output.size()) {
+				std::memcpy(&output[Z * bytes_per_block], &input[address], bytes_per_block);
+			}
+		}
+	}
+
+	// Crop if dimensions were padded
+	if (width_show != width_real || height_show != height_real) {
+		std::vector<uint8_t> cropped(width_show * height_show * bytes_per_block);
+
+		for (int Y = 0; Y < height_show; ++Y) {
+			size_t offset_in = static_cast<size_t>(Y) * width_real * bytes_per_block;
+			size_t offset_out = static_cast<size_t>(Y) * width_show * bytes_per_block;
+
+			if (offset_in + width_show * bytes_per_block <= output.size() &&
+				offset_out + width_show * bytes_per_block <= cropped.size()) {
+				std::memcpy(&cropped[offset_out], &output[offset_in], width_show * bytes_per_block);
+			}
+		}
+
+		output.swap(cropped);
+	}
+}
+
 // Function to validate the input file
 bool checkFileSignature(const std::string& filePath, const std::string& expectedSignature) {
 	std::ifstream file(filePath, std::ios::binary);
@@ -256,7 +329,7 @@ void createDirectories(const std::string& path) {
 // Function to print the help message
 void printHelpMessage() {
 	std::cout << std::endl;
-	std::cout << "👻 GBTVGR TEX to DDS Converter v0.6.0" << std::endl;
+	std::cout << "👻 GBTVGR TEX to DDS Converter v0.7.0" << std::endl;
 	std::cout << std::endl;
 	std::cout << "Usage: tex2dds <input_file.tex> [options]" << std::endl;
 	std::cout << std::endl;
@@ -395,16 +468,17 @@ int main(int argc, char* argv[]) {
 		ddsHeader.ddspf = DDSPF_A8R8G8B8;
 		break;
 	case 0x16:	// XBOX360
+	case 0x41:	// SWITCH
 		ddsHeader.ddspf = DDSPF_R8G8B8A8;
 		ddsHeader.dwPitchOrLinearSize = texHeader.dwWidth * 4; // 4 bytes per pixel
 		break;
-	case 0x04:
+	case 0x04:	// PC
 		ddsHeader.ddspf = DDSPF_R5G6B5;
 		break;
-	case 0x05:
+	case 0x05:	// PC
 		ddsHeader.ddspf = DDSPF_A4R4G4B4;
 		break;
-	case 0x17:
+	case 0x17:	// PC
 		ddsHeader.ddspf = DDSPF_DXT3;
 		break;
 	case 0x2B:	// PC
@@ -433,9 +507,16 @@ int main(int argc, char* argv[]) {
 	case 0x33:	// XBOX360
 		ddsHeader.ddspf = DDSPF_DXT5;
 		break;
-	case 0x37:
+	case 0x37:	// PC
 		ddsHeader.ddspf = DDSPF_L8;
 		break;
+	case 0x40:	// SWITCH
+	case 0x3F:	// SWITCH
+	case 0x3D:	// SWITCH
+	case 0x3C:	// SWITCH
+	case 0x3E:	// SWITCH
+		std::cerr << "* ERROR: Unsupported Nintendo Switch TEX format: " << texHeader.dwFormat << std::endl;
+		return 1;
 		default:
 			std::cerr << "* ERROR: Unsupported TEX format: " << texHeader.dwFormat << std::endl;
 			return 1;
@@ -447,6 +528,11 @@ int main(int argc, char* argv[]) {
 	int blockPixelSize;
 	int texelBytePitch;
 	bool convertToRGBA = false;
+
+	int bytes_per_block = 4;
+	int block_height = 8;
+	int width_pad = 8;
+	int height_pad = 8;
 
 	switch (texHeader.dwFormat) {
 	case 0x27:	// PS3 OK
@@ -460,6 +546,19 @@ int main(int argc, char* argv[]) {
 		blockPixelSize = 1;
 		texelBytePitch = 4;
 		convertToRGBA = true;
+		break;
+	case 0x3C:	// SWITCH
+	case 0x3D:	// SWITCH
+	case 0x3E:	// SWITCH
+	case 0x3F:	// SWITCH
+	case 0x40:	// SWITCH
+	case 0x41:	// SWITCH
+		needsUnswizzle = true;
+		swizzleType = "switch";
+		bytes_per_block = 4;
+		block_height = 16;
+		width_pad = 8;
+		height_pad = 8;
 		break;
 	case 0x28:	// XBOX360
 		needsUnswizzle = true;
@@ -514,18 +613,24 @@ int main(int argc, char* argv[]) {
 			for (size_t i = 0; i + 1 < unswizzled.size(); i += bytesPerPixel) {
 				std::reverse(unswizzled.begin() + i, unswizzled.begin() + i + bytesPerPixel);
 			}
+		} else if (swizzleType == "switch") {
+			unswizzle_switch(reinterpret_cast<const std::vector<uint8_t>&>(texData), unswizzled, texHeader.dwWidth, texHeader.dwHeight, bytes_per_block, block_height, width_pad, height_pad);
 		}
 		texData = std::vector<char>(unswizzled.begin(), unswizzled.end());
 		if (convertToRGBA) {
-			for (size_t i = 0; i + 3 < texData.size(); i += 4) {
-				uint8_t a = static_cast<uint8_t>(texData[i + 1]);
-				uint8_t r = static_cast<uint8_t>(texData[i + 0]);
-				uint8_t g = static_cast<uint8_t>(texData[i + 2]);
-				uint8_t b = static_cast<uint8_t>(texData[i + 3]);
-				texData[i + 0] = r;
-				texData[i + 1] = g;
-				texData[i + 2] = b;
-				texData[i + 3] = a;
+			switch (texHeader.dwFormat) {
+			case 0x16:	// XBOX360
+				for (size_t i = 0; i + 3 < texData.size(); i += 4) {
+					uint8_t a = static_cast<uint8_t>(texData[i + 1]);
+					uint8_t r = static_cast<uint8_t>(texData[i + 0]);
+					uint8_t g = static_cast<uint8_t>(texData[i + 2]);
+					uint8_t b = static_cast<uint8_t>(texData[i + 3]);
+					texData[i + 0] = r;
+					texData[i + 1] = g;
+					texData[i + 2] = b;
+					texData[i + 3] = a;
+				}
+				break;
 			}
 		}
 	}
