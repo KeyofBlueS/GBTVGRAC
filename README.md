@@ -2,9 +2,9 @@
 
 These tools are designed to convert texture (TEX <-> DDS) and audio (SMP <-> OGG) assets for use in Ghostbusters: The Video Game and its remastered version.
 
-**tex2dds:** Converts TEX files, whether from the original game (PC, PS3, Xbox 360) or the remastered version (PC), into DDS format.
+**tex2dds:** Converts TEX files, whether from the original game (PC, PS3, Xbox 360) or the remastered version (PC, minimal support for Nintendo Switch), into DDS format.
 
-**dds2tex:** Converts DDS files to TEX format for both the original game (PC, PS3, Xbox 360) and the remastered version (PC).
+**dds2tex:** Converts DDS files to TEX format for both the original game (PC, PS3, Xbox 360) and the remastered version (PC, minimal support for Nintendo Switch).
 
 **smp2ogg:** Converts SMP audio files from the remastered version (PC) into OGG format.
 
