@@ -1,9 +1,9 @@
 # Ghostbusters: The Video Game Remastered Asset Converters (tex2dds)
 
-**tex2dds:** Converts TEX files, whether from the original game (PC, PS3, Xbox 360) or the remastered version (PC), into DDS format.
+**tex2dds:** Converts TEX files, whether from the original game (PC, PS3, Xbox 360) or the remastered version (PC, minimal support for Nintendo Switch), into DDS format.
 
 **Note:** The program will automatically unswizzle textures when required.
-This is necessary for certain textures used in the PS3 version and for all textures in the Xbox 360 version (the PC version does not use swizzled textures at all).
+This is necessary for certain textures used in the PS3 version and for all textures in the Xbox 360 and Nintendo Switch versions (the PC version does not use swizzled textures at all).
 Keep in mind that this unswizzling feature is experimental, and the resulting DDS files may not always be accurate.
 
 
